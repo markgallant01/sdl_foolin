@@ -4,6 +4,12 @@
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 
+const char defaultImgPath[] = "lena.bmp";
+const char upImgPath[] = "snail.bmp";
+const char downImgPath[] = "colors.bmp";
+const char leftImgPath[] = "dots.bmp";
+const char rightImgPath[] = "buck.bmp";
+
 enum KeyPressSurfaces {
     KEY_PRESS_SURFACE_UP,
     KEY_PRESS_SURFACE_DOWN,
@@ -124,7 +130,7 @@ bool game_initializeGame(struct App *app)
 // load a single surface and return a pointer to it
 SDL_Surface *game_loadMedia(void)
 {
-    SDL_Surface *s = SDL_LoadBMP("lena.bmp"); 
+    SDL_Surface *s = SDL_LoadBMP(defaultImgPath); 
     if (s == NULL) {
         return NULL;
     }
@@ -135,27 +141,31 @@ SDL_Surface *game_loadMedia(void)
 // initialize array of surface pointers
 bool game_loadImages(SDL_Surface *arr[])
 {
-    arr[KEY_PRESS_SURFACE_UP] = SDL_LoadBMP("dots.bmp");
+    arr[KEY_PRESS_SURFACE_UP] = SDL_LoadBMP(upImgPath);
     if (arr[KEY_PRESS_SURFACE_UP] == NULL) {
-        fprintf(stderr, "Error loading image: %s\n", SDL_GetError());
+        fprintf(stderr, "Error loading up image: %s\n", 
+                SDL_GetError());
         return false;
     }
 
-    arr[KEY_PRESS_SURFACE_DOWN] = SDL_LoadBMP("snail.bmp");
+    arr[KEY_PRESS_SURFACE_DOWN] = SDL_LoadBMP(downImgPath);
     if (arr[KEY_PRESS_SURFACE_DOWN] == NULL) {
-        fprintf(stderr, "Error loading image: %s\n", SDL_GetError());
+        fprintf(stderr, "Error loading down image: %s\n", 
+                SDL_GetError());
         return false;
     }
 
-    arr[KEY_PRESS_SURFACE_LEFT] = SDL_LoadBMP("colors.bmp");
+    arr[KEY_PRESS_SURFACE_LEFT] = SDL_LoadBMP(leftImgPath);
     if (arr[KEY_PRESS_SURFACE_LEFT] == NULL) {
-        fprintf(stderr, "Error loading image: %s\n", SDL_GetError());
+        fprintf(stderr, "Error loading left image: %s\n",
+                SDL_GetError());
         return false;
     }
 
-    arr[KEY_PRESS_SURFACE_RIGHT] = SDL_LoadBMP("buck.bmp");
+    arr[KEY_PRESS_SURFACE_RIGHT] = SDL_LoadBMP(rightImgPath);
     if (arr[KEY_PRESS_SURFACE_RIGHT] == NULL) {
-        fprintf(stderr, "Error loading image: %s\n", SDL_GetError());
+        fprintf(stderr, "Error loading right image: %s\n",
+                SDL_GetError());
         return false;
     }
 
