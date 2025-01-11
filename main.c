@@ -20,7 +20,7 @@ enum KeyPressSurfaces {
 
 struct App {
     SDL_Window *window;
-    SDL_Surface *windowSurface;
+    SDL_Surface *surface;
 };
 
 bool game_initializeGame(struct App *app);
@@ -42,7 +42,7 @@ int main(void)
     }
 
     // apply the image
-    SDL_BlitSurface(background, NULL, app.windowSurface, NULL);
+    SDL_BlitSurface(background, NULL, app.surface, NULL);
 
     // update the surface
     SDL_UpdateWindowSurface(app.window);
@@ -85,7 +85,7 @@ int main(void)
                         break;
                 }
 
-                SDL_BlitSurface(newImage, NULL, app.windowSurface, NULL);
+                SDL_BlitSurface(newImage, NULL, app.surface, NULL);
             }
 
             SDL_UpdateWindowSurface(app.window);
@@ -120,8 +120,8 @@ bool game_initializeGame(struct App *app)
     }
 
     // get window surface
-    app->windowSurface = SDL_GetWindowSurface(app->window);
-    if (app->windowSurface == NULL) {
+    app->surface = SDL_GetWindowSurface(app->window);
+    if (app->surface == NULL) {
         fprintf(stderr, "Surface could not be created! SDL_ERROR: %s\n",
             SDL_GetError());
         return false;
@@ -180,6 +180,9 @@ void game_close(struct App *app)
     // destroy window
     SDL_DestroyWindow(app->window);
     app->window = NULL;
+    app->surface = NULL;
+    
+    // free all images
 
     // quit SDL systems
     SDL_Quit();
