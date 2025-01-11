@@ -64,27 +64,30 @@ int main(void)
             if (e.type == SDL_QUIT)
                 quit = true;
 
-            SDL_Surface *newImage = NULL;
-            int keysym = e.key.keysym.sym;
-            switch (keysym) {
-                case SDLK_ESCAPE:
-                    quit = true;
-                    break;
-                case SDLK_UP:
-                    newImage = images[KEY_PRESS_SURFACE_UP];
-                    break;
-                case SDLK_DOWN:
-                    newImage = images[KEY_PRESS_SURFACE_DOWN];
-                    break;
-                case SDLK_LEFT:
-                    newImage = images[KEY_PRESS_SURFACE_RIGHT];
-                    break;
-                case SDLK_RIGHT:
-                    newImage = images[KEY_PRESS_SURFACE_LEFT];
-                    break;
+            if (e.type == SDL_KEYDOWN) {
+                SDL_Surface *newImage = NULL;
+                int keysym = e.key.keysym.sym;
+                switch (keysym) {
+                    case SDLK_ESCAPE:
+                        quit = true;
+                        break;
+                    case SDLK_UP:
+                        newImage = images[KEY_PRESS_SURFACE_UP];
+                        break;
+                    case SDLK_DOWN:
+                        newImage = images[KEY_PRESS_SURFACE_DOWN];
+                        break;
+                    case SDLK_LEFT:
+                        newImage = images[KEY_PRESS_SURFACE_RIGHT];
+                        break;
+                    case SDLK_RIGHT:
+                        newImage = images[KEY_PRESS_SURFACE_LEFT];
+                        break;
+                }
+
+                SDL_BlitSurface(newImage, NULL, app.windowSurface, NULL);
             }
 
-            SDL_BlitSurface(newImage, NULL, app.windowSurface, NULL);
             SDL_UpdateWindowSurface(app.window);
         }
     }
