@@ -11,13 +11,13 @@ const char down_image_path[] = "images/png/boat.png";
 const char left_image_path[] = "images/png/clouds.png";
 const char right_image_path[] = "images/png/hut.png";
 
-enum KeyPressSurfaces {
-    KEY_SURFACE_DEFAULT,
-    KEY_SURFACE_UP,
-    KEY_SURFACE_DOWN,
-    KEY_SURFACE_LEFT,
-    KEY_SURFACE_RIGHT,
-    KEY_SURFACE_TOTAL
+enum KeyPressTextures {
+    KEY_TEXTURE_DEFAULT,
+    KEY_TEXTURE_UP,
+    KEY_TEXTURE_DOWN,
+    KEY_TEXTURE_LEFT,
+    KEY_TEXTURE_RIGHT,
+    KEY_TEXTURE_TOTAL
 };
 
 struct App {
@@ -37,7 +37,7 @@ int main(void)
         return EXIT_FAILURE;
 
     // load media
-    SDL_Texture *images[KEY_SURFACE_TOTAL];
+    SDL_Texture *images[KEY_TEXTURE_TOTAL];
     if (!load_images(images, &app))
         return EXIT_FAILURE;
 
@@ -45,7 +45,7 @@ int main(void)
     SDL_RenderClear(app.renderer);
 
     // render texture to screen
-    SDL_RenderCopy(app.renderer, images[KEY_SURFACE_DEFAULT],
+    SDL_RenderCopy(app.renderer, images[KEY_TEXTURE_DEFAULT],
             NULL, NULL);
 
     // update screen
@@ -64,28 +64,28 @@ int main(void)
                 quit = true;
 
             if (e.type == SDL_KEYDOWN) {
-                SDL_Texture *newImage = NULL;
+                SDL_Texture *new_image = NULL;
                 int keysym = e.key.keysym.sym;
                 switch (keysym) {
                     case SDLK_ESCAPE:
                         quit = true;
                         break;
                     case SDLK_UP:
-                        newImage = images[KEY_SURFACE_UP];
+                        new_image = images[KEY_TEXTURE_UP];
                         break;
                     case SDLK_DOWN:
-                        newImage = images[KEY_SURFACE_DOWN];
+                        new_image = images[KEY_TEXTURE_DOWN];
                         break;
                     case SDLK_LEFT:
-                        newImage = images[KEY_SURFACE_RIGHT];
+                        new_image = images[KEY_TEXTURE_RIGHT];
                         break;
                     case SDLK_RIGHT:
-                        newImage = images[KEY_SURFACE_LEFT];
+                        new_image = images[KEY_TEXTURE_LEFT];
                         break;
                 }
 
                 SDL_RenderClear(app.renderer);
-                SDL_RenderCopy(app.renderer, newImage, NULL, NULL);
+                SDL_RenderCopy(app.renderer, new_image, NULL, NULL);
                 SDL_RenderPresent(app.renderer);
             }
         }
@@ -146,49 +146,49 @@ bool initialize_game(struct App *app)
 // passed in App
 SDL_Texture *load_texture(const char path[], struct App *app)
 {
-    SDL_Texture *newTexture = IMG_LoadTexture(app->renderer, path);
-    if (newTexture == NULL) {
+    SDL_Texture *new_texture = IMG_LoadTexture(app->renderer, path);
+    if (new_texture == NULL) {
         fprintf(stderr, "Error creating texture\n");
         fprintf(stderr, "SDL_Error: %s\n", SDL_GetError());
         return NULL;
     }
 
-    return newTexture;
+    return new_texture;
 }
 
 // initialize array of surface pointers
 bool load_images(SDL_Texture *arr[], struct App *app)
 {
-    arr[KEY_SURFACE_DEFAULT] = load_texture(default_image_path, app);
-    if (arr[KEY_SURFACE_DEFAULT] == NULL) {
+    arr[KEY_TEXTURE_DEFAULT] = load_texture(default_image_path, app);
+    if (arr[KEY_TEXTURE_DEFAULT] == NULL) {
         fprintf(stderr, "Error loading default image: %s\n",
                 SDL_GetError());
         return false;
     }
 
-    arr[KEY_SURFACE_UP] = load_texture(up_image_path, app);
-    if (arr[KEY_SURFACE_UP] == NULL) {
+    arr[KEY_TEXTURE_UP] = load_texture(up_image_path, app);
+    if (arr[KEY_TEXTURE_UP] == NULL) {
         fprintf(stderr, "Error loading up image: %s\n", 
                 SDL_GetError());
         return false;
     }
 
-    arr[KEY_SURFACE_DOWN] = load_texture(down_image_path, app);
-    if (arr[KEY_SURFACE_DOWN] == NULL) {
+    arr[KEY_TEXTURE_DOWN] = load_texture(down_image_path, app);
+    if (arr[KEY_TEXTURE_DOWN] == NULL) {
         fprintf(stderr, "Error loading down image: %s\n", 
                 SDL_GetError());
         return false;
     }
 
-    arr[KEY_SURFACE_LEFT] = load_texture(left_image_path, app);
-    if (arr[KEY_SURFACE_LEFT] == NULL) {
+    arr[KEY_TEXTURE_LEFT] = load_texture(left_image_path, app);
+    if (arr[KEY_TEXTURE_LEFT] == NULL) {
         fprintf(stderr, "Error loading left image: %s\n",
                 SDL_GetError());
         return false;
     }
 
-    arr[KEY_SURFACE_RIGHT] = load_texture(right_image_path, app);
-    if (arr[KEY_SURFACE_RIGHT] == NULL) {
+    arr[KEY_TEXTURE_RIGHT] = load_texture(right_image_path, app);
+    if (arr[KEY_TEXTURE_RIGHT] == NULL) {
         fprintf(stderr, "Error loading right image: %s\n",
                 SDL_GetError());
         return false;
@@ -200,7 +200,7 @@ bool load_images(SDL_Texture *arr[], struct App *app)
 void terminate(struct App *app, SDL_Texture *images[])
 {
     // free loaded images
-    for (int i = 0; i < KEY_SURFACE_TOTAL; i++) {
+    for (int i = 0; i < KEY_TEXTURE_TOTAL; i++) {
         SDL_DestroyTexture(images[i]);
     }
 
