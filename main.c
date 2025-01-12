@@ -146,22 +146,12 @@ bool initialize_game(struct App *app)
 // passed in App
 SDL_Texture *load_texture(const char path[], struct App *app)
 {
-    SDL_Surface *rawImage = IMG_Load(path);
-    if (rawImage == NULL) {
-        fprintf(stderr, "Error loading image: %s\n \
-                Error: %s\n", path, IMG_GetError());
-        return NULL;
-    }
-
-    SDL_Texture *newTexture =
-        SDL_CreateTextureFromSurface(app->renderer, rawImage);
+    SDL_Texture *newTexture = IMG_LoadTexture(app->renderer, path);
     if (newTexture == NULL) {
         fprintf(stderr, "Error creating texture\n");
         fprintf(stderr, "SDL_Error: %s\n", SDL_GetError());
         return NULL;
     }
-
-    SDL_FreeSurface(rawImage);
 
     return newTexture;
 }
