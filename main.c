@@ -1,56 +1,55 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 #include <stdio.h>
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 
-const char defaultImgPath[] = "lena.bmp";
-const char upImgPath[] = "snail.bmp";
-const char downImgPath[] = "colors.bmp";
-const char leftImgPath[] = "dots.bmp";
-const char rightImgPath[] = "buck.bmp";
+const char default_image_path[] = "images/png/blue.png";
+const char up_image_path[] = "images/png/bee.png";
+const char down_image_path[] = "images/png/boat.png";
+const char left_image_path[] = "images/png/clouds.png";
+const char right_image_path[] = "images/png/hut.png";
 
 enum KeyPressSurfaces {
-    KEY_PRESS_SURFACE_UP,
-    KEY_PRESS_SURFACE_DOWN,
-    KEY_PRESS_SURFACE_LEFT,
-    KEY_PRESS_SURFACE_RIGHT,
-    KEY_PRESS_SURFACE_TOTAL
+    KEY_SURFACE_DEFAULT,
+    KEY_SURFACE_UP,
+    KEY_SURFACE_DOWN,
+    KEY_SURFACE_LEFT,
+    KEY_SURFACE_RIGHT,
+    KEY_SURFACE_TOTAL
 };
 
 struct App {
     SDL_Window *window;
-    SDL_Surface *surface;
+    SDL_Renderer *renderer;
 };
 
-bool game_initializeGame(struct App *app);
-SDL_Surface *game_loadMedia(void);
-void game_close(struct App *app);
-bool game_loadImages(SDL_Surface *arr[]);
+bool initialize_game(struct App *app);
+void terminate(struct App *app, SDL_Texture *images[]);
+bool load_images(SDL_Texture *arr[], struct App *app);
+SDL_Texture *load_texture(const char path[], struct App *app);
 
 int main(void)
 {
     struct App app;
-    if (!game_initializeGame(&app))
+    if (!initialize_game(&app))
         return EXIT_FAILURE;
 
     // load media
-    SDL_Surface *background = game_loadMedia();
-    if (background == NULL) {
-        fprintf(stderr, "Error loading media: %s\n", SDL_GetError());
+    SDL_Texture *images[KEY_SURFACE_TOTAL];
+    if (!load_images(images, &app))
         return EXIT_FAILURE;
-    }
 
-    // apply the image
-    SDL_BlitSurface(background, NULL, app.surface, NULL);
+    // clear screen
+    SDL_RenderClear(app.renderer);
 
-    // update the surface
-    SDL_UpdateWindowSurface(app.window);
+    // render texture to screen
+    SDL_RenderCopy(app.renderer, images[KEY_SURFACE_DEFAULT],
+            NULL, NULL);
 
-    // store different background images
-    SDL_Surface *images[KEY_PRESS_SURFACE_TOTAL];
-    if (!game_loadImages(images))
-        return EXIT_FAILURE;
+    // update screen
+    SDL_RenderPresent(app.renderer);
 
     // quit flag
     bool quit = false;
@@ -65,34 +64,35 @@ int main(void)
                 quit = true;
 
             if (e.type == SDL_KEYDOWN) {
-                SDL_Surface *newImage = NULL;
+                SDL_Texture *newImage = NULL;
                 int keysym = e.key.keysym.sym;
                 switch (keysym) {
                     case SDLK_ESCAPE:
                         quit = true;
                         break;
                     case SDLK_UP:
-                        newImage = images[KEY_PRESS_SURFACE_UP];
+                        newImage = images[KEY_SURFACE_UP];
                         break;
                     case SDLK_DOWN:
-                        newImage = images[KEY_PRESS_SURFACE_DOWN];
+                        newImage = images[KEY_SURFACE_DOWN];
                         break;
                     case SDLK_LEFT:
-                        newImage = images[KEY_PRESS_SURFACE_RIGHT];
+                        newImage = images[KEY_SURFACE_RIGHT];
                         break;
                     case SDLK_RIGHT:
-                        newImage = images[KEY_PRESS_SURFACE_LEFT];
+                        newImage = images[KEY_SURFACE_LEFT];
                         break;
                 }
 
-                SDL_BlitSurface(newImage, NULL, app.surface, NULL);
+                SDL_RenderClear(app.renderer);
+                SDL_RenderCopy(app.renderer, newImage, NULL, NULL);
+                SDL_RenderPresent(app.renderer);
             }
-
-            SDL_UpdateWindowSurface(app.window);
         }
+
     }
 
-    game_close(&app);
+    terminate(&app, images);
     return 0;
 }
 
@@ -100,7 +100,7 @@ int main(void)
 // window and window surface. returns true
 // if everything goes according to plan and
 // false if any step fails
-bool game_initializeGame(struct App *app)
+bool initialize_game(struct App *app)
 {
     // initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -119,54 +119,86 @@ bool game_initializeGame(struct App *app)
         return false;
     }
 
-    // get window surface
-    app->surface = SDL_GetWindowSurface(app->window);
-    if (app->surface == NULL) {
-        fprintf(stderr, "Surface could not be created! SDL_ERROR: %s\n",
-            SDL_GetError());
+    app->renderer = SDL_CreateRenderer(app->window, -1,
+            SDL_RENDERER_ACCELERATED);
+    if (app->renderer == NULL) {
+        fprintf(stderr, "Renderer could not be created!\n");
+        fprintf(stderr, "SDL_Error: %s\n", SDL_GetError());
+        return false;
+    }
+
+    // initialize renderer color
+    SDL_SetRenderDrawColor(app->renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+
+    // initialize IMG system
+    int flags = IMG_INIT_JPG | IMG_INIT_PNG;
+    int initted = IMG_Init(flags);
+    if ((initted & flags) != flags) {
+        fprintf(stderr, "IMG_Init: Failed to initialize\n");
+        fprintf(stderr, "IMG_Init: %s\n", IMG_GetError());
         return false;
     }
 
     return true;
 }
 
-// load a single surface and return a pointer to it
-SDL_Surface *game_loadMedia(void)
+// load an image from a given filepath optimized for the 
+// passed in App
+SDL_Texture *load_texture(const char path[], struct App *app)
 {
-    SDL_Surface *s = SDL_LoadBMP(defaultImgPath); 
-    if (s == NULL) {
+    SDL_Surface *rawImage = IMG_Load(path);
+    if (rawImage == NULL) {
+        fprintf(stderr, "Error loading image: %s\n \
+                Error: %s\n", path, IMG_GetError());
         return NULL;
     }
 
-    return s;
+    SDL_Texture *newTexture =
+        SDL_CreateTextureFromSurface(app->renderer, rawImage);
+    if (newTexture == NULL) {
+        fprintf(stderr, "Error creating texture\n");
+        fprintf(stderr, "SDL_Error: %s\n", SDL_GetError());
+        return NULL;
+    }
+
+    SDL_FreeSurface(rawImage);
+
+    return newTexture;
 }
 
 // initialize array of surface pointers
-bool game_loadImages(SDL_Surface *arr[])
+bool load_images(SDL_Texture *arr[], struct App *app)
 {
-    arr[KEY_PRESS_SURFACE_UP] = SDL_LoadBMP(upImgPath);
-    if (arr[KEY_PRESS_SURFACE_UP] == NULL) {
+    arr[KEY_SURFACE_DEFAULT] = load_texture(default_image_path, app);
+    if (arr[KEY_SURFACE_DEFAULT] == NULL) {
+        fprintf(stderr, "Error loading default image: %s\n",
+                SDL_GetError());
+        return false;
+    }
+
+    arr[KEY_SURFACE_UP] = load_texture(up_image_path, app);
+    if (arr[KEY_SURFACE_UP] == NULL) {
         fprintf(stderr, "Error loading up image: %s\n", 
                 SDL_GetError());
         return false;
     }
 
-    arr[KEY_PRESS_SURFACE_DOWN] = SDL_LoadBMP(downImgPath);
-    if (arr[KEY_PRESS_SURFACE_DOWN] == NULL) {
+    arr[KEY_SURFACE_DOWN] = load_texture(down_image_path, app);
+    if (arr[KEY_SURFACE_DOWN] == NULL) {
         fprintf(stderr, "Error loading down image: %s\n", 
                 SDL_GetError());
         return false;
     }
 
-    arr[KEY_PRESS_SURFACE_LEFT] = SDL_LoadBMP(leftImgPath);
-    if (arr[KEY_PRESS_SURFACE_LEFT] == NULL) {
+    arr[KEY_SURFACE_LEFT] = load_texture(left_image_path, app);
+    if (arr[KEY_SURFACE_LEFT] == NULL) {
         fprintf(stderr, "Error loading left image: %s\n",
                 SDL_GetError());
         return false;
     }
 
-    arr[KEY_PRESS_SURFACE_RIGHT] = SDL_LoadBMP(rightImgPath);
-    if (arr[KEY_PRESS_SURFACE_RIGHT] == NULL) {
+    arr[KEY_SURFACE_RIGHT] = load_texture(right_image_path, app);
+    if (arr[KEY_SURFACE_RIGHT] == NULL) {
         fprintf(stderr, "Error loading right image: %s\n",
                 SDL_GetError());
         return false;
@@ -175,15 +207,20 @@ bool game_loadImages(SDL_Surface *arr[])
     return true;
 }
 
-void game_close(struct App *app)
+void terminate(struct App *app, SDL_Texture *images[])
 {
-    // destroy window
+    // free loaded images
+    for (int i = 0; i < KEY_SURFACE_TOTAL; i++) {
+        SDL_DestroyTexture(images[i]);
+    }
+
+    // destroy window & renderer
+    SDL_DestroyRenderer(app->renderer);
+    app->renderer = NULL;
     SDL_DestroyWindow(app->window);
     app->window = NULL;
-    app->surface = NULL;
-    
-    // free all images
 
     // quit SDL systems
+    IMG_Quit();
     SDL_Quit();
 }
