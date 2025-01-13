@@ -1,9 +1,14 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <box2d/box2d.h>
+
 #include <stdio.h>
 
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_WIDTH = 1280;
+const int SCREEN_HEIGHT = 720;
+
+// pixel - meter conversion factor
+const float CONV_FACTOR = 100.0f;
 
 const char default_image_path[] = "images/png/blue.png";
 const char up_image_path[] = "images/png/bee.png";
@@ -29,6 +34,8 @@ bool initialize_game(struct App *app);
 void terminate(struct App *app, SDL_Texture *images[]);
 bool load_images(SDL_Texture *arr[], struct App *app);
 SDL_Texture *load_texture(const char path[], struct App *app);
+float pixelsToMeters(int pixels);
+int metersToPixels(float meters);
 
 int main(void)
 {
@@ -36,20 +43,42 @@ int main(void)
     if (!initialize_game(&app))
         return EXIT_FAILURE;
 
-    // load media
-    SDL_Texture *images[KEY_TEXTURE_TOTAL];
-    if (!load_images(images, &app))
-        return EXIT_FAILURE;
+    // set up physics world
+    b2WorldDef worldDef = b2DefaultWorldDef();
+    worldDef.gravity = (b2Vec2){0.0f, -10.0f};
+    b2WorldId worldId = b2CreateWorld(&worldDef);
+
+    // ground physics body
+    b2BodyDef groundBodyDef = b2DefaultBodyDef();
+    groundBodyDef.position = (b2Vec2){0.0f, -10.0f};
+    b2BodyId groundId = b2CreateBody(worldId, &groundBodyDef);
+
+    // ground body polygon
+    b2Polygon groundBox = b2MakeBox(50.0f, 10.0f);
+    b2ShapeDef groundShapeDef = b2DefaultShapeDef();
+    b2CreatePolygonShape(groundId, &groundShapeDef, &groundBox);
 
     // clear screen
+    SDL_SetRenderDrawColor(app.renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderClear(app.renderer);
 
-    // render texture to screen
-    SDL_RenderCopy(app.renderer, images[KEY_TEXTURE_DEFAULT],
-            NULL, NULL);
+    // red square dynamic body
+    b2BodyDef bodyDef = b2DefaultBodyDef();
+    bodyDef.type = b2_dynamicBody;
+    bodyDef.position = (b2Vec2){0.0f, 4.0f};
+    b2BodyId bodyId = b2CreateBody(worldId, &bodyDef);
 
-    // update screen
+    // red square body shape
+    b2Polygon dynamicBox = b2MakeBox(1.0f, 1.0f);
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.density = 1.0f;
+    shapeDef.friction = 0.3f;
+    b2CreatePolygonShape(bodyId, &shapeDef, &dynamicBox);
+
     SDL_RenderPresent(app.renderer);
+
+    float timeStep = 1.0f / 60.0f;
+    int subStepCount = 4;
 
     // quit flag
     bool quit = false;
@@ -64,36 +93,39 @@ int main(void)
                 quit = true;
 
             if (e.type == SDL_KEYDOWN) {
-                SDL_Texture *new_image = NULL;
                 int keysym = e.key.keysym.sym;
-                switch (keysym) {
-                    case SDLK_ESCAPE:
-                        quit = true;
-                        break;
-                    case SDLK_UP:
-                        new_image = images[KEY_TEXTURE_UP];
-                        break;
-                    case SDLK_DOWN:
-                        new_image = images[KEY_TEXTURE_DOWN];
-                        break;
-                    case SDLK_LEFT:
-                        new_image = images[KEY_TEXTURE_RIGHT];
-                        break;
-                    case SDLK_RIGHT:
-                        new_image = images[KEY_TEXTURE_LEFT];
-                        break;
-                }
-
-                SDL_RenderClear(app.renderer);
-                SDL_RenderCopy(app.renderer, new_image, NULL, NULL);
-                SDL_RenderPresent(app.renderer);
+                if (keysym == SDLK_ESCAPE)
+                    quit = true;
             }
+
         }
 
+        // physics tick
+        b2World_Step(worldId, timeStep, subStepCount);
+
+        // clear screen
+        SDL_SetRenderDrawColor(app.renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+        SDL_RenderClear(app.renderer);
+
+        // update red square position
+        b2Vec2 position = b2Body_GetPosition(bodyId);
+        b2Rot rotation = b2Body_GetRotation(bodyId);
+        printf("%4.2f %4.2f %4.2f", position.x, position.y,
+                b2Rot_GetAngle(rotation));
+        break;
     }
 
-    terminate(&app, images);
     return 0;
+}
+
+float pixelsToMeters(int pixels)
+{
+    return (float)pixels / CONV_FACTOR;
+}
+
+int metersToPixels(float meters)
+{
+    return (int)(meters * CONV_FACTOR);
 }
 
 // initialize SDL systems and the given app's

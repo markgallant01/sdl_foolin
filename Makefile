@@ -10,7 +10,7 @@ DEBUG_FLAGS = -Wall -Wextra -Wconversion -Wsign-conversion \
 RELEASE_FLAGS = -w -O2 -DNDEBUG
 
 # linker flags
-LINKER_FLAGS = -lSDL2 -lSDL2_image
+LINKER_FLAGS = -lSDL2 -lSDL2_image -lbox2d -lm
 
 # standard specification
 STD = -std=c23
