@@ -8,7 +8,7 @@ const int SCREEN_WIDTH = 1280;
 const int SCREEN_HEIGHT = 720;
 
 // pixel - meter conversion factor
-const float CONV_FACTOR = 100.0f;
+const float CONV_FACTOR = 50.0f;
 
 const char default_image_path[] = "images/png/blue.png";
 const char up_image_path[] = "images/png/bee.png";
@@ -30,12 +30,20 @@ struct App {
     SDL_Renderer *renderer;
 };
 
+struct pxVect {
+    int x;
+    int y;
+};
+
 bool initialize_game(struct App *app);
 void terminate(struct App *app, SDL_Texture *images[]);
 bool load_images(SDL_Texture *arr[], struct App *app);
 SDL_Texture *load_texture(const char path[], struct App *app);
 float pixelsToMeters(int pixels);
 int metersToPixels(float meters);
+struct pxVect coordConvert(struct pxVect oldCoords);
+struct pxVect cornerConvert(int x, int y, int width, int height);
+void render_grid(struct App *app);
 
 int main(void)
 {
@@ -45,17 +53,26 @@ int main(void)
 
     // set up physics world
     b2WorldDef worldDef = b2DefaultWorldDef();
-    worldDef.gravity = (b2Vec2){0.0f, -10.0f};
+    worldDef.gravity = (b2Vec2){0.0f, -1.0f};
     b2WorldId worldId = b2CreateWorld(&worldDef);
 
     // ground physics body
     b2BodyDef groundBodyDef = b2DefaultBodyDef();
-    groundBodyDef.position = (b2Vec2){0.0f, -10.0f};
+    // position origin 200 pixels down
+    float yPosition = pixelsToMeters(200);
+    groundBodyDef.position = (b2Vec2){0.0f, -yPosition};
     b2BodyId groundId = b2CreateBody(worldId, &groundBodyDef);
 
     // ground body polygon
-    b2Polygon groundBox = b2MakeBox(50.0f, 10.0f);
+    // 200px wide, 100 tall
+    float mWidth = pixelsToMeters(200);
+    float mHeight = pixelsToMeters(100);
+    // halve, b2MakeBox takes half-lengths
+    mWidth /= 2;
+    mHeight /= 2;
+    b2Polygon groundBox = b2MakeBox(mWidth, mHeight);
     b2ShapeDef groundShapeDef = b2DefaultShapeDef();
+    groundShapeDef.restitution = 0.5f;
     b2CreatePolygonShape(groundId, &groundShapeDef, &groundBox);
 
     // clear screen
@@ -65,15 +82,45 @@ int main(void)
     // red square dynamic body
     b2BodyDef bodyDef = b2DefaultBodyDef();
     bodyDef.type = b2_dynamicBody;
-    bodyDef.position = (b2Vec2){0.0f, 4.0f};
+    // position 200 meters up
+    yPosition = pixelsToMeters(200);
+    bodyDef.position = (b2Vec2){0.0f, yPosition};
     b2BodyId bodyId = b2CreateBody(worldId, &bodyDef);
 
     // red square body shape
-    b2Polygon dynamicBox = b2MakeBox(1.0f, 1.0f);
+    // 20px by 20px box
+    mWidth = pixelsToMeters(20);
+    mHeight = pixelsToMeters(20);
+    // halve for half-lengths
+    mWidth /= 2;
+    mHeight /= 2;
+    b2Polygon dynamicBox = b2MakeBox(mWidth, mHeight);
     b2ShapeDef shapeDef = b2DefaultShapeDef();
     shapeDef.density = 1.0f;
     shapeDef.friction = 0.3f;
     b2CreatePolygonShape(bodyId, &shapeDef, &dynamicBox);
+
+    // render ground
+    b2Vec2 groundPos = b2Body_GetPosition(groundId);
+    int pxX = metersToPixels(groundPos.x);
+    int pxY = metersToPixels(groundPos.y);
+    struct pxVect groundPxCoords = cornerConvert(pxX, pxY, 200, 100);
+    groundPxCoords = coordConvert(groundPxCoords);
+    SDL_Rect groundRect = {.x = groundPxCoords.x, .y = groundPxCoords.y,
+        .w = 200, .h = 100};
+    SDL_SetRenderDrawColor(app.renderer, 0x00, 0xFF, 0x00, 0xFF);
+    SDL_RenderFillRect(app.renderer, &groundRect);
+
+    // render red cube
+    b2Vec2 cubePos = b2Body_GetPosition(bodyId);
+    pxX = metersToPixels(cubePos.x);
+    pxY = metersToPixels(cubePos.y);
+    struct pxVect cubePxCoords = cornerConvert(pxX, pxY, 20, 20);
+    cubePxCoords = coordConvert(cubePxCoords);
+    SDL_Rect cubeRect = {.x = cubePxCoords.x, .y = cubePxCoords.y,
+        .w = 20, .h = 20};
+    SDL_SetRenderDrawColor(app.renderer, 0xFF, 0x00, 0x00, 0xFF);
+    SDL_RenderFillRect(app.renderer, &cubeRect);
 
     SDL_RenderPresent(app.renderer);
 
@@ -107,15 +154,55 @@ int main(void)
         SDL_SetRenderDrawColor(app.renderer, 0xFF, 0xFF, 0xFF, 0xFF);
         SDL_RenderClear(app.renderer);
 
-        // update red square position
-        b2Vec2 position = b2Body_GetPosition(bodyId);
-        b2Rot rotation = b2Body_GetRotation(bodyId);
-        printf("%4.2f %4.2f %4.2f", position.x, position.y,
-                b2Rot_GetAngle(rotation));
-        break;
+        render_grid(&app);
+
+        // render ground
+        b2Vec2 groundPos = b2Body_GetPosition(groundId);
+        int pxX = metersToPixels(groundPos.x);
+        int pxY = metersToPixels(groundPos.y);
+        struct pxVect groundPxCoords = cornerConvert(pxX, pxY, 200, 100);
+        groundPxCoords = coordConvert(groundPxCoords);
+        SDL_Rect groundRect = {.x = groundPxCoords.x, .y = groundPxCoords.y,
+            .w = 200, .h = 100};
+        SDL_SetRenderDrawColor(app.renderer, 0x00, 0xFF, 0x00, 0xFF);
+        SDL_RenderFillRect(app.renderer, &groundRect);
+
+        // render red cube
+        b2Vec2 cubePos = b2Body_GetPosition(bodyId);
+        pxX = metersToPixels(cubePos.x);
+        pxY = metersToPixels(cubePos.y);
+        struct pxVect cubePxCoords = cornerConvert(pxX, pxY, 20, 20);
+        cubePxCoords = coordConvert(cubePxCoords);
+        SDL_Rect cubeRect = {.x = cubePxCoords.x, .y = cubePxCoords.y,
+            .w = 20, .h = 20};
+        SDL_SetRenderDrawColor(app.renderer, 0xFF, 0x00, 0x00, 0xFF);
+        SDL_RenderFillRect(app.renderer, &cubeRect);
+
+        SDL_RenderPresent(app.renderer);
     }
 
     return 0;
+}
+
+void render_grid(struct App *app)
+{
+    SDL_SetRenderDrawColor(app->renderer, 0x00, 0x00, 0x00, 0xFF);
+    SDL_RenderDrawLine(app->renderer, SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2,
+            SCREEN_HEIGHT);
+    SDL_RenderDrawLine(app->renderer, 0, SCREEN_HEIGHT / 2, SCREEN_WIDTH,
+            SCREEN_HEIGHT / 2);
+
+    int vStep = SCREEN_HEIGHT / 20;
+    int mid = SCREEN_WIDTH / 2;
+    for (int i = vStep; i < SCREEN_HEIGHT; i += vStep) {
+        SDL_RenderDrawLine(app->renderer, mid - 10, i, mid + 10, i);
+    }
+
+    vStep = SCREEN_WIDTH / 20;
+    mid = SCREEN_HEIGHT / 2;
+    for (int i = vStep; i < SCREEN_WIDTH; i += vStep) {
+        SDL_RenderDrawLine(app->renderer, i, mid + 10, i, mid - 10);
+    }
 }
 
 float pixelsToMeters(int pixels)
@@ -126,6 +213,27 @@ float pixelsToMeters(int pixels)
 int metersToPixels(float meters)
 {
     return (int)(meters * CONV_FACTOR);
+}
+
+struct pxVect cornerConvert(int centerX, int centerY, int width, int height)
+{
+    struct pxVect cornerCoords;
+    cornerCoords.x = (int)((float)centerX - (0.5f * (float)width));
+    cornerCoords.y = (int)((float)centerY - (0.5f * (float)height));
+
+    return cornerCoords;
+}
+
+struct pxVect coordConvert(struct pxVect oldCoords)
+{
+    // screen center origin
+    int screenOriginX = SCREEN_WIDTH / 2;
+    int screenOriginY = SCREEN_HEIGHT / 2;
+
+    oldCoords.x = (int)((float)screenOriginX + (float)oldCoords.x);
+    oldCoords.y = (int)((float)screenOriginY - (float)oldCoords.y);
+
+    return oldCoords;
 }
 
 // initialize SDL systems and the given app's
