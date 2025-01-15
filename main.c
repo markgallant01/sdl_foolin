@@ -1,11 +1,12 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_render.h>
 #include <box2d/box2d.h>
 
 #include <stdio.h>
 
-const int SCREEN_WIDTH = 1280;
-const int SCREEN_HEIGHT = 720;
+const int SCREEN_WIDTH = 1000;
+const int SCREEN_HEIGHT = 1000;
 
 // pixel - meter conversion factor
 const float CONV_FACTOR = 50.0f;
@@ -30,13 +31,23 @@ struct App {
     SDL_Renderer *renderer;
 };
 
-struct pxVect {
+struct PixelCoords { 
     int x;
     int y;
 };
 
+struct MeterCoords {
+    float x;
+    float y;
+};
+
+const struct PixelCoords pxOrigin = {
+    .x = SCREEN_WIDTH / 2,
+    .y = SCREEN_HEIGHT / 2
+};
+
 bool initialize_game(struct App *app);
-void terminate(struct App *app, SDL_Texture *images[]);
+void terminate(struct App *app);
 bool load_images(SDL_Texture *arr[], struct App *app);
 SDL_Texture *load_texture(const char path[], struct App *app);
 float pixelsToMeters(int pixels);
@@ -44,6 +55,10 @@ int metersToPixels(float meters);
 struct pxVect coordConvert(struct pxVect oldCoords);
 struct pxVect cornerConvert(int x, int y, int width, int height);
 void render_grid(struct App *app);
+struct PixelCoords meterCoordsToPx(struct MeterCoords mCoords);
+void createLineAtMeters(struct App *app, struct MeterCoords mCoords);
+void createBoxAtMeters(struct App *app, struct MeterCoords mCoords, int width,
+        int height);
 
 int main(void)
 {
@@ -51,79 +66,36 @@ int main(void)
     if (!initialize_game(&app))
         return EXIT_FAILURE;
 
-    // set up physics world
+    // create physics worlds
     b2WorldDef worldDef = b2DefaultWorldDef();
-    worldDef.gravity = (b2Vec2){0.0f, -1.0f};
+    worldDef.gravity = (b2Vec2){0.0f, -10.0f};
     b2WorldId worldId = b2CreateWorld(&worldDef);
 
-    // ground physics body
+    // create ground body
     b2BodyDef groundBodyDef = b2DefaultBodyDef();
-    // position origin 200 pixels down
-    float yPosition = pixelsToMeters(200);
-    groundBodyDef.position = (b2Vec2){0.0f, -yPosition};
+    groundBodyDef.position = (b2Vec2){0.0f, -7.0f};
     b2BodyId groundId = b2CreateBody(worldId, &groundBodyDef);
 
-    // ground body polygon
-    // 200px wide, 100 tall
-    float mWidth = pixelsToMeters(200);
-    float mHeight = pixelsToMeters(100);
-    // halve, b2MakeBox takes half-lengths
-    mWidth /= 2;
-    mHeight /= 2;
-    b2Polygon groundBox = b2MakeBox(mWidth, mHeight);
+    // create ground polygon centered on ground body
+    b2Polygon groundBox  = b2MakeBox(4.0f, 1.0f);
     b2ShapeDef groundShapeDef = b2DefaultShapeDef();
-    groundShapeDef.restitution = 0.5f;
     b2CreatePolygonShape(groundId, &groundShapeDef, &groundBox);
 
-    // clear screen
-    SDL_SetRenderDrawColor(app.renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-    SDL_RenderClear(app.renderer);
-
-    // red square dynamic body
+    // create dynamic drop box
     b2BodyDef bodyDef = b2DefaultBodyDef();
     bodyDef.type = b2_dynamicBody;
-    // position 200 meters up
-    yPosition = pixelsToMeters(200);
-    bodyDef.position = (b2Vec2){0.0f, yPosition};
+    bodyDef.position = (b2Vec2){0.0f, 7.0f};
     b2BodyId bodyId = b2CreateBody(worldId, &bodyDef);
 
-    // red square body shape
-    // 20px by 20px box
-    mWidth = pixelsToMeters(20);
-    mHeight = pixelsToMeters(20);
-    // halve for half-lengths
-    mWidth /= 2;
-    mHeight /= 2;
-    b2Polygon dynamicBox = b2MakeBox(mWidth, mHeight);
+    // drop box shape
+    b2Polygon dynamicBox = b2MakeBox(0.5f, 0.5f);
     b2ShapeDef shapeDef = b2DefaultShapeDef();
     shapeDef.density = 1.0f;
     shapeDef.friction = 0.3f;
+    shapeDef.restitution = 0.3f;
     b2CreatePolygonShape(bodyId, &shapeDef, &dynamicBox);
 
-    // render ground
-    b2Vec2 groundPos = b2Body_GetPosition(groundId);
-    int pxX = metersToPixels(groundPos.x);
-    int pxY = metersToPixels(groundPos.y);
-    struct pxVect groundPxCoords = cornerConvert(pxX, pxY, 200, 100);
-    groundPxCoords = coordConvert(groundPxCoords);
-    SDL_Rect groundRect = {.x = groundPxCoords.x, .y = groundPxCoords.y,
-        .w = 200, .h = 100};
-    SDL_SetRenderDrawColor(app.renderer, 0x00, 0xFF, 0x00, 0xFF);
-    SDL_RenderFillRect(app.renderer, &groundRect);
-
-    // render red cube
-    b2Vec2 cubePos = b2Body_GetPosition(bodyId);
-    pxX = metersToPixels(cubePos.x);
-    pxY = metersToPixels(cubePos.y);
-    struct pxVect cubePxCoords = cornerConvert(pxX, pxY, 20, 20);
-    cubePxCoords = coordConvert(cubePxCoords);
-    SDL_Rect cubeRect = {.x = cubePxCoords.x, .y = cubePxCoords.y,
-        .w = 20, .h = 20};
-    SDL_SetRenderDrawColor(app.renderer, 0xFF, 0x00, 0x00, 0xFF);
-    SDL_RenderFillRect(app.renderer, &cubeRect);
-
-    SDL_RenderPresent(app.renderer);
-
+    // world setup
     float timeStep = 1.0f / 60.0f;
     int subStepCount = 4;
 
@@ -141,14 +113,10 @@ int main(void)
 
             if (e.type == SDL_KEYDOWN) {
                 int keysym = e.key.keysym.sym;
-                if (keysym == SDLK_ESCAPE)
-                    quit = true;
+            if (keysym == SDLK_ESCAPE)
+                quit = true;
             }
-
         }
-
-        // physics tick
-        b2World_Step(worldId, timeStep, subStepCount);
 
         // clear screen
         SDL_SetRenderDrawColor(app.renderer, 0xFF, 0xFF, 0xFF, 0xFF);
@@ -156,41 +124,82 @@ int main(void)
 
         render_grid(&app);
 
-        // render ground
-        b2Vec2 groundPos = b2Body_GetPosition(groundId);
-        int pxX = metersToPixels(groundPos.x);
-        int pxY = metersToPixels(groundPos.y);
-        struct pxVect groundPxCoords = cornerConvert(pxX, pxY, 200, 100);
-        groundPxCoords = coordConvert(groundPxCoords);
-        SDL_Rect groundRect = {.x = groundPxCoords.x, .y = groundPxCoords.y,
-            .w = 200, .h = 100};
-        SDL_SetRenderDrawColor(app.renderer, 0x00, 0xFF, 0x00, 0xFF);
-        SDL_RenderFillRect(app.renderer, &groundRect);
+        // advance physics world
+        b2World_Step(worldId, timeStep, subStepCount);
 
-        // render red cube
-        b2Vec2 cubePos = b2Body_GetPosition(bodyId);
-        pxX = metersToPixels(cubePos.x);
-        pxY = metersToPixels(cubePos.y);
-        struct pxVect cubePxCoords = cornerConvert(pxX, pxY, 20, 20);
-        cubePxCoords = coordConvert(cubePxCoords);
-        SDL_Rect cubeRect = {.x = cubePxCoords.x, .y = cubePxCoords.y,
-            .w = 20, .h = 20};
-        SDL_SetRenderDrawColor(app.renderer, 0xFF, 0x00, 0x00, 0xFF);
-        SDL_RenderFillRect(app.renderer, &cubeRect);
+        struct MeterCoords groundBox = {.x = 0.0f, .y = -7.0f};
+        createBoxAtMeters(&app, groundBox, 400, 100);
+
+        // get position of cube
+        b2Vec2 position = b2Body_GetPosition(bodyId);
+
+        struct MeterCoords dropBox = {.x = position.x, .y = position.y};
+        createBoxAtMeters(&app, dropBox, 50, 50);
 
         SDL_RenderPresent(app.renderer);
     }
 
+    terminate(&app);
     return 0;
 }
 
-void render_grid(struct App *app)
+// pixel coords can be converted from meters by relating them
+// to the calculated pixel origin
+struct PixelCoords meterCoordsToPx(struct MeterCoords mCoords)
 {
+    printf("initial coords:\n");
+    printf("meterX: %f meterY: %f\n", mCoords.x, mCoords.y);
+    // convert meter coords to pixels
+    int pixelX = metersToPixels(mCoords.x);
+    int pixelY = metersToPixels(mCoords.y);
+    printf("Converted raw coords:\n");
+    printf("raw PX-x: %d raw PX-y: %d\n", pixelX, pixelY);
+
+    // convert X by relating to the origin. Positive values
+    // get added to the origin and negative values subtracted
+    pixelX = pxOrigin.x + pixelX;
+    pixelY = pxOrigin.y - pixelY;
+    printf("final coords:\n");
+    printf("final x: %d final y: %d\n", pixelX, pixelY);
+
+    struct PixelCoords pxCoords = {.x = pixelX, .y = pixelY};
+    return pxCoords;
+}
+
+struct MeterCoords pixelCoordsToMeters(struct PixelCoords pxCoords)
+{
+    struct MeterCoords mCoords;
+    mCoords.x = pixelsToMeters(pxCoords.x);
+    mCoords.y = pixelsToMeters(pxCoords.y);
+    return mCoords;
+}
+
+void createBoxAtMeters(struct App *app, struct MeterCoords mCoords, int width,
+        int height)
+{
+    SDL_SetRenderDrawColor(app->renderer, 0xFF, 0x00, 0x00, 0xFF);
+    struct PixelCoords pxCoords = meterCoordsToPx(mCoords);
+    // convert coords from center-origin to corner-origin
+    pxCoords.x -= width / 2;
+    pxCoords.y -= height / 2;
+    SDL_Rect fillRect = {.x = pxCoords.x, .y = pxCoords.y, width, height};
+    SDL_RenderFillRect(app->renderer, &fillRect);
+}
+
+void createLineAtMeters(struct App *app, struct MeterCoords mCoords)
+{
+    SDL_SetRenderDrawColor(app->renderer, 0xFF, 0x00, 0x00, 0xFF);
+    struct PixelCoords pxCoords = meterCoordsToPx(mCoords);
+    SDL_RenderDrawLine(app->renderer, pxCoords.x - 20, pxCoords.y,
+            pxCoords.x + 20, pxCoords.y);
+}
+
+void render_grid(struct App *app) {
     SDL_SetRenderDrawColor(app->renderer, 0x00, 0x00, 0x00, 0xFF);
     SDL_RenderDrawLine(app->renderer, SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2,
-            SCREEN_HEIGHT);
+        SCREEN_HEIGHT);
     SDL_RenderDrawLine(app->renderer, 0, SCREEN_HEIGHT / 2, SCREEN_WIDTH,
-            SCREEN_HEIGHT / 2);
+        SCREEN_HEIGHT / 2);
 
     int vStep = SCREEN_HEIGHT / 20;
     int mid = SCREEN_WIDTH / 2;
@@ -215,27 +224,6 @@ int metersToPixels(float meters)
     return (int)(meters * CONV_FACTOR);
 }
 
-struct pxVect cornerConvert(int centerX, int centerY, int width, int height)
-{
-    struct pxVect cornerCoords;
-    cornerCoords.x = (int)((float)centerX - (0.5f * (float)width));
-    cornerCoords.y = (int)((float)centerY - (0.5f * (float)height));
-
-    return cornerCoords;
-}
-
-struct pxVect coordConvert(struct pxVect oldCoords)
-{
-    // screen center origin
-    int screenOriginX = SCREEN_WIDTH / 2;
-    int screenOriginY = SCREEN_HEIGHT / 2;
-
-    oldCoords.x = (int)((float)screenOriginX + (float)oldCoords.x);
-    oldCoords.y = (int)((float)screenOriginY - (float)oldCoords.y);
-
-    return oldCoords;
-}
-
 // initialize SDL systems and the given app's
 // window and window surface. returns true
 // if everything goes according to plan and
@@ -245,17 +233,17 @@ bool initialize_game(struct App *app)
     // initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n",
-                SDL_GetError());
+            SDL_GetError());
         return false;
     }
 
     // create window
-    app->window = SDL_CreateWindow("SDL Tutorial",
-            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-            SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    app->window = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+
     if (app->window == NULL) {
         fprintf(stderr, "Window could not be created! SDL_ERROR: %s\n",
-                SDL_GetError());
+            SDL_GetError());
         return false;
     }
 
@@ -282,68 +270,8 @@ bool initialize_game(struct App *app)
     return true;
 }
 
-// load an image from a given filepath optimized for the 
-// passed in App
-SDL_Texture *load_texture(const char path[], struct App *app)
+void terminate(struct App *app)
 {
-    SDL_Texture *new_texture = IMG_LoadTexture(app->renderer, path);
-    if (new_texture == NULL) {
-        fprintf(stderr, "Error creating texture\n");
-        fprintf(stderr, "SDL_Error: %s\n", SDL_GetError());
-        return NULL;
-    }
-
-    return new_texture;
-}
-
-// initialize array of surface pointers
-bool load_images(SDL_Texture *arr[], struct App *app)
-{
-    arr[KEY_TEXTURE_DEFAULT] = load_texture(default_image_path, app);
-    if (arr[KEY_TEXTURE_DEFAULT] == NULL) {
-        fprintf(stderr, "Error loading default image: %s\n",
-                SDL_GetError());
-        return false;
-    }
-
-    arr[KEY_TEXTURE_UP] = load_texture(up_image_path, app);
-    if (arr[KEY_TEXTURE_UP] == NULL) {
-        fprintf(stderr, "Error loading up image: %s\n", 
-                SDL_GetError());
-        return false;
-    }
-
-    arr[KEY_TEXTURE_DOWN] = load_texture(down_image_path, app);
-    if (arr[KEY_TEXTURE_DOWN] == NULL) {
-        fprintf(stderr, "Error loading down image: %s\n", 
-                SDL_GetError());
-        return false;
-    }
-
-    arr[KEY_TEXTURE_LEFT] = load_texture(left_image_path, app);
-    if (arr[KEY_TEXTURE_LEFT] == NULL) {
-        fprintf(stderr, "Error loading left image: %s\n",
-                SDL_GetError());
-        return false;
-    }
-
-    arr[KEY_TEXTURE_RIGHT] = load_texture(right_image_path, app);
-    if (arr[KEY_TEXTURE_RIGHT] == NULL) {
-        fprintf(stderr, "Error loading right image: %s\n",
-                SDL_GetError());
-        return false;
-    }
-
-    return true;
-}
-
-void terminate(struct App *app, SDL_Texture *images[])
-{
-    // free loaded images
-    for (int i = 0; i < KEY_TEXTURE_TOTAL; i++) {
-        SDL_DestroyTexture(images[i]);
-    }
-
     // destroy window & renderer
     SDL_DestroyRenderer(app->renderer);
     app->renderer = NULL;
