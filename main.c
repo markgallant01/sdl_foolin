@@ -9,26 +9,16 @@ const int SCREEN_WIDTH = 1000;
 const int SCREEN_HEIGHT = 1000;
 
 // pixel - meter conversion factor
-const float CONV_FACTOR = 50.0f;
-
-const char default_image_path[] = "images/png/blue.png";
-const char up_image_path[] = "images/png/bee.png";
-const char down_image_path[] = "images/png/boat.png";
-const char left_image_path[] = "images/png/clouds.png";
-const char right_image_path[] = "images/png/hut.png";
-
-enum KeyPressTextures {
-    KEY_TEXTURE_DEFAULT,
-    KEY_TEXTURE_UP,
-    KEY_TEXTURE_DOWN,
-    KEY_TEXTURE_LEFT,
-    KEY_TEXTURE_RIGHT,
-    KEY_TEXTURE_TOTAL
-};
+const float CONV_FACTOR = 70.0f;
 
 struct App {
     SDL_Window *window;
     SDL_Renderer *renderer;
+};
+
+struct Node {
+    b2BodyId block;
+    struct Node *next;
 };
 
 struct PixelCoords { 
@@ -46,6 +36,15 @@ const struct PixelCoords pxOrigin = {
     .y = SCREEN_HEIGHT / 2
 };
 
+enum Textures {
+    GROUND_TEXTURE,
+    BOX_TEXTURE,
+    TEXTURES_TOTAL,
+};
+
+const char *ground_texture_path = "assets/platformer_art/Tiles/grassCenter.png";
+const char *box_texture_path = "assets/platformer_art/Tiles/box.png";
+
 bool initialize_game(struct App *app);
 void terminate(struct App *app);
 bool load_images(SDL_Texture *arr[], struct App *app);
@@ -59,6 +58,14 @@ struct PixelCoords meterCoordsToPx(struct MeterCoords mCoords);
 void createLineAtMeters(struct App *app, struct MeterCoords mCoords);
 void createBoxAtMeters(struct App *app, struct MeterCoords mCoords, int width,
         int height);
+b2BodyId createGroundBlock(float pxX, float pxY, b2WorldId worldId);
+b2BodyId createBox(float pxX, float pxY, b2WorldId worldId);
+void render_ground_block(b2Vec2 position, struct App *app,
+        SDL_Texture *textures[]);
+void render_box_block(b2Vec2 position, struct App *app,
+        SDL_Texture *textures[]);
+void render_dynamic_box(b2Vec2 position, struct App *app,
+        SDL_Texture *textures[]);
 
 int main(void)
 {
@@ -66,34 +73,40 @@ int main(void)
     if (!initialize_game(&app))
         return EXIT_FAILURE;
 
+    SDL_Texture *textures[TEXTURES_TOTAL];
+    textures[GROUND_TEXTURE] = IMG_LoadTexture(app.renderer,
+            ground_texture_path);
+    textures[BOX_TEXTURE] = IMG_LoadTexture(app.renderer, box_texture_path);
+
+    if ((textures[0] == NULL) || textures[1] == NULL) {
+        printf("PROBLEM\n");
+        return EXIT_FAILURE;
+    }
+
     // create physics worlds
     b2WorldDef worldDef = b2DefaultWorldDef();
     worldDef.gravity = (b2Vec2){0.0f, -10.0f};
     b2WorldId worldId = b2CreateWorld(&worldDef);
 
-    // create ground body
-    b2BodyDef groundBodyDef = b2DefaultBodyDef();
-    groundBodyDef.position = (b2Vec2){0.0f, -7.0f};
-    b2BodyId groundId = b2CreateBody(worldId, &groundBodyDef);
+    // world LL
+    struct Node world;
+    world.next = NULL;
+    world.block = createGroundBlock(0.0f, -5.0f, worldId);
 
-    // create ground polygon centered on ground body
-    b2Polygon groundBox  = b2MakeBox(4.0f, 1.0f);
-    b2ShapeDef groundShapeDef = b2DefaultShapeDef();
-    b2CreatePolygonShape(groundId, &groundShapeDef, &groundBox);
+    struct Node *secondNode = malloc(sizeof(struct Node));
+    secondNode->next = NULL;
+    secondNode->block = createGroundBlock(-1.0f, -5.0f, worldId);
+    world.next = secondNode;
 
-    // create dynamic drop box
-    b2BodyDef bodyDef = b2DefaultBodyDef();
-    bodyDef.type = b2_dynamicBody;
-    bodyDef.position = (b2Vec2){0.0f, 7.0f};
-    b2BodyId bodyId = b2CreateBody(worldId, &bodyDef);
+    struct Node *thirdNode = malloc(sizeof(struct Node));
+    thirdNode->next = NULL;
+    thirdNode->block = createGroundBlock(1.0f, -5.0f, worldId);
+    secondNode->next = thirdNode;
 
-    // drop box shape
-    b2Polygon dynamicBox = b2MakeBox(0.5f, 0.5f);
-    b2ShapeDef shapeDef = b2DefaultShapeDef();
-    shapeDef.density = 1.0f;
-    shapeDef.friction = 0.3f;
-    shapeDef.restitution = 0.3f;
-    b2CreatePolygonShape(bodyId, &shapeDef, &dynamicBox);
+    // dynamic object LL
+    struct Node objects;
+    objects.next = NULL;
+    objects.block = createBox(0.0f, 5.0f, worldId);
 
     // world setup
     float timeStep = 1.0f / 60.0f;
@@ -113,8 +126,11 @@ int main(void)
 
             if (e.type == SDL_KEYDOWN) {
                 int keysym = e.key.keysym.sym;
-            if (keysym == SDLK_ESCAPE)
-                quit = true;
+                if (keysym == SDLK_ESCAPE)
+                    quit = true;
+                if (keysym == SDLK_SPACE)
+                    b2Body_ApplyForceToCenter(objects.block,
+                            (b2Vec2){0.0f, 500.0f}, true);
             }
         }
 
@@ -124,17 +140,26 @@ int main(void)
 
         render_grid(&app);
 
+        // iterate world LL and render blocks
+        struct Node *currentNode = &world;
+        while (currentNode != NULL) {
+            // get ground block position
+            b2Vec2 position = b2Body_GetPosition(currentNode->block);
+            render_ground_block(position, &app, textures);
+            currentNode = currentNode->next;
+        }
+
+        // iterate box LL and render blocks
+        currentNode = &objects;
+        while (currentNode != NULL) {
+            // get dynamic box position
+            b2Vec2 position = b2Body_GetPosition(currentNode->block);
+            render_dynamic_box(position, &app, textures);
+            currentNode = currentNode->next;
+        }
+
         // advance physics world
         b2World_Step(worldId, timeStep, subStepCount);
-
-        struct MeterCoords groundBox = {.x = 0.0f, .y = -7.0f};
-        createBoxAtMeters(&app, groundBox, 400, 100);
-
-        // get position of cube
-        b2Vec2 position = b2Body_GetPosition(bodyId);
-
-        struct MeterCoords dropBox = {.x = position.x, .y = position.y};
-        createBoxAtMeters(&app, dropBox, 50, 50);
 
         SDL_RenderPresent(app.renderer);
     }
@@ -143,24 +168,109 @@ int main(void)
     return 0;
 }
 
+// render dynamic box
+void render_dynamic_box(b2Vec2 position, struct App *app,
+        SDL_Texture *textures[])
+{
+    struct MeterCoords mCoords;
+    mCoords.x = position.x;
+    mCoords.y = position.y;
+    struct PixelCoords pxCoords = meterCoordsToPx(mCoords);
+    pxCoords.x -= 70 / 2;
+    pxCoords.y -= 70 / 2;
+    SDL_Rect renderQuad = {.x = pxCoords.x, .y = pxCoords.y, .w = 70, .h = 70};
+    SDL_RenderCopy(app->renderer, textures[BOX_TEXTURE], NULL, &renderQuad);
+}
+
+// render ground blocks with ground texture
+void render_ground_block(b2Vec2 position, struct App *app,
+        SDL_Texture *textures[])
+{
+    // set rendering space and render to screen
+    struct MeterCoords mCoords;
+    mCoords.x = position.x;
+    mCoords.y = position.y;
+    struct PixelCoords pxCoords = meterCoordsToPx(mCoords);
+    pxCoords.x -= 70 / 2;
+    pxCoords.y -= 70 / 2;
+    SDL_Rect renderQuad = {.x = pxCoords.x, .y = pxCoords.y, .w = 70, .h = 70};
+    SDL_RenderCopy(app->renderer, textures[GROUND_TEXTURE], NULL, &renderQuad);
+}
+
+void render_box_block(b2Vec2 position, struct App *app, SDL_Texture *textures[])
+{
+    struct MeterCoords mCoords;
+    mCoords.x = position.x;
+    mCoords.y = position.y;
+    struct PixelCoords pxCoords = meterCoordsToPx(mCoords);
+    SDL_Rect renderQuad = {.x = pxCoords.x, .y = pxCoords.y, .w = 70, .h = 70};
+    SDL_RenderCopy(app->renderer, textures[BOX_TEXTURE], NULL, &renderQuad);
+}
+
+// create dynamic box at the given (x, y) meter coordinates
+b2BodyId createBox(float mX, float mY, b2WorldId worldId)
+{
+    // convert pixel coords to meters
+    struct b2Vec2 m_coords;
+    m_coords.x = mX;
+    m_coords.y = mY;
+
+    // create dynamic drop box
+    b2BodyDef bodyDef = b2DefaultBodyDef();
+    bodyDef.type = b2_dynamicBody;
+    bodyDef.position = m_coords;
+    b2BodyId bodyId = b2CreateBody(worldId, &bodyDef);
+
+    // drop box shape
+    b2Polygon dynamicBox = b2MakeBox(0.5f, 0.5f);
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.density = 1.0f;
+    shapeDef.friction = 0.3f;
+    shapeDef.restitution = 0.3f;
+    b2CreatePolygonShape(bodyId, &shapeDef, &dynamicBox);
+
+    return bodyId;
+}
+
+// create a ground block at the given (x,y) meter coordinates
+b2BodyId createGroundBlock(float mX, float mY, b2WorldId worldId)
+{
+    const int GROUND_BLOCK_PX_W = 70;
+    const int GROUND_BLOCK_PX_H = 70;
+
+    const float GROUND_BLOCK_M_W = pixelsToMeters(GROUND_BLOCK_PX_W);
+    const float GROUND_BLOCK_M_H = pixelsToMeters(GROUND_BLOCK_PX_H);
+
+    struct b2Vec2 m_coords;
+    m_coords.x = mX;
+    m_coords.y = mY;
+
+    // create ground body
+    b2BodyDef groundBodyDef = b2DefaultBodyDef();
+    groundBodyDef.position = m_coords;
+    b2BodyId groundId = b2CreateBody(worldId, &groundBodyDef);
+
+    // create ground polygon centered on ground body
+    b2Polygon groundBox  = b2MakeBox(GROUND_BLOCK_M_W / 2,
+            GROUND_BLOCK_M_H / 2);
+    b2ShapeDef groundShapeDef = b2DefaultShapeDef();
+    b2CreatePolygonShape(groundId, &groundShapeDef, &groundBox);
+
+    return groundId;
+}
+
 // pixel coords can be converted from meters by relating them
 // to the calculated pixel origin
 struct PixelCoords meterCoordsToPx(struct MeterCoords mCoords)
 {
-    printf("initial coords:\n");
-    printf("meterX: %f meterY: %f\n", mCoords.x, mCoords.y);
     // convert meter coords to pixels
     int pixelX = metersToPixels(mCoords.x);
     int pixelY = metersToPixels(mCoords.y);
-    printf("Converted raw coords:\n");
-    printf("raw PX-x: %d raw PX-y: %d\n", pixelX, pixelY);
 
     // convert X by relating to the origin. Positive values
     // get added to the origin and negative values subtracted
     pixelX = pxOrigin.x + pixelX;
     pixelY = pxOrigin.y - pixelY;
-    printf("final coords:\n");
-    printf("final x: %d final y: %d\n", pixelX, pixelY);
 
     struct PixelCoords pxCoords = {.x = pixelX, .y = pixelY};
     return pxCoords;
@@ -201,16 +311,30 @@ void render_grid(struct App *app) {
     SDL_RenderDrawLine(app->renderer, 0, SCREEN_HEIGHT / 2, SCREEN_WIDTH,
         SCREEN_HEIGHT / 2);
 
-    int vStep = SCREEN_HEIGHT / 20;
-    int mid = SCREEN_WIDTH / 2;
-    for (int i = vStep; i < SCREEN_HEIGHT; i += vStep) {
-        SDL_RenderDrawLine(app->renderer, mid - 10, i, mid + 10, i);
+    // starting at origin, draw lines going up
+    int mid_y = SCREEN_HEIGHT / 2;
+    int mid_x = SCREEN_WIDTH / 2;
+    int step = (int)CONV_FACTOR;    // step = 1 meter
+    for (int i = mid_y - step; i > 0; i -= step) {
+        SDL_RenderDrawLine(app->renderer, mid_x -10, i, mid_x + 10, i);
     }
 
-    vStep = SCREEN_WIDTH / 20;
-    mid = SCREEN_HEIGHT / 2;
-    for (int i = vStep; i < SCREEN_WIDTH; i += vStep) {
-        SDL_RenderDrawLine(app->renderer, i, mid + 10, i, mid - 10);
+    // starting at origin, draw lines going down
+    step = (int)CONV_FACTOR;
+    for (int i = mid_y + step; i < SCREEN_HEIGHT; i += step) {
+        SDL_RenderDrawLine(app->renderer, mid_x - 10, i, mid_x + 10, i);
+    }
+
+    // starting at origin, draw lines going right
+    step = (int)CONV_FACTOR;
+    for (int i = mid_x + step; i < SCREEN_WIDTH; i += step) {
+        SDL_RenderDrawLine(app->renderer, i, mid_y - 10, i, mid_y + 10);
+    }
+
+    // starting at origin, draw lines going left
+    step = (int)CONV_FACTOR;
+    for (int i = mid_x - step; i > 0; i -= step) {
+        SDL_RenderDrawLine(app->renderer, i, mid_y - 10, i, mid_y + 10);
     }
 }
 
