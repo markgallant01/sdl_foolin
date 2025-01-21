@@ -132,6 +132,10 @@ int main(void)
                     b2Body_ApplyForceToCenter(objects.block,
                             (b2Vec2){0.0f, 500.0f}, true);
             }
+
+            if (e.type == SDL_MOUSEBUTTONDOWN) {
+                    printf("xClick: %d yClick: %d\n", e.button.x, e.button.y);
+            }
         }
 
         // clear screen
@@ -304,7 +308,8 @@ void createLineAtMeters(struct App *app, struct MeterCoords mCoords)
             pxCoords.x + 20, pxCoords.y);
 }
 
-void render_grid(struct App *app) {
+void render_grid(struct App *app)
+{
     SDL_SetRenderDrawColor(app->renderer, 0x00, 0x00, 0x00, 0xFF);
     SDL_RenderDrawLine(app->renderer, SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2,
         SCREEN_HEIGHT);
